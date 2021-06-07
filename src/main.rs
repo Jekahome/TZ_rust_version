@@ -16,7 +16,7 @@
 /// Но а так решение по желанию их вариантов несколько,
 /// желательно самое оптимальное по их мнениею, и описание почему так приветствуется
 
-
+use std::thread;
 use std::str::FromStr;
 use std::cmp::PartialEq;
 
@@ -133,8 +133,26 @@ impl <K:PartialEq,V>Map<K,V> {
     }
 }
 
+use std::sync::Arc;
+use std::sync::RwLock;
 
 fn main(){
+
+    let mut m:Arc<RwLock<Map<String,i32>>> = Arc::new(RwLock::new(Map::new()));
+    let mut buf_th = vec![];
+    for i in 0..10_i32 {
+        let map_th = Arc::clone(&m);
+        buf_th.push(thread::spawn(move || {
+            if let Ok(mut map) = map_th.write(){
+                map.insert(i.to_string(),i);
+            }
+        }));
+    }
+    for el in buf_th{
+        el.join().unwrap();
+    }
+    println!("{:?}",&m);
+
 
     let mut m:Map<String,i32> = Map::new();
     m.insert("1".into(),11);
@@ -152,7 +170,6 @@ fn main(){
     println!("{:?}",&m);
     storage.rollback(ver1.clone(),&mut m);
     println!("{:?}",&m);
-
 }
 
 
