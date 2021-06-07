@@ -16,8 +16,9 @@
 /// Но а так решение по желанию их вариантов несколько,
 /// желательно самое оптимальное по их мнениею, и описание почему так приветствуется
 
+
 use std::str::FromStr;
-use std::num::ParseIntError;
+use std::cmp::PartialEq;
 
 #[derive(Debug,PartialEq,Clone)]
 struct Version{
@@ -41,10 +42,10 @@ impl Storage{
         Self{data:vec![]}
     }
     ///  Сохранить текущую версию.
-    fn checkpoint(&mut self,version:Version,map:&Map) {
+    fn checkpoint<K,V>(&mut self,version:Version,map:&Map<K,V>) where K: ToString,V: ToString {
         let mut buf:String = "".to_string();
         for (k,v) in map.data.iter(){
-            buf.push_str(k);
+            buf.push_str(&k.to_string());
             buf.push_str(",");
             buf.push_str(&v.to_string());
             buf.push_str(";");
@@ -53,9 +54,9 @@ impl Storage{
         self.data.push((version,buf));
     }
     /// Откатить на определенную версию.
-    fn rollback(&self,version:Version,map:&mut Map)->bool{
+    fn rollback<K:PartialEq + FromStr,V: FromStr>(&self,version:Version,map:&mut Map<K,V>)->bool {
         if let Some(index) = self.data.iter().position(|(k,_)| k == &version){
-           let (k,v) = self.data.get(index).unwrap();
+            let (_,v) = self.data.get(index).unwrap();
             if let Ok(m) = Map::from_str(v){
                 *map = m;
                 return true;
@@ -73,29 +74,37 @@ impl Storage{
 
 
 #[derive(Debug)]
-struct Map{
-    data:Vec<(String,i32)>
+struct Map<K,V>{
+    data:Vec<(K,V)>
 }
 
-impl FromStr for Map {
-    type Err = ParseIntError;
+impl <K: PartialEq + FromStr,V: FromStr> FromStr for Map<K,V> {
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut m:Map = Map::new();
+        let mut m:Map<K,V> = Map::new();
         let coords: Vec<&str> = s.split(';').collect();
         for item in coords.iter(){
             let kv:Vec<&str> = item.split(",").collect();
-            m.insert(kv[0].to_string(),kv[1].parse::<i32>()?);
+            let k = match kv[0].parse::<K>() {
+                Ok(k) => k,
+                Err(_) =>{ return Err("Key parse error".into())}
+            };
+            let v = match kv[1].parse::<V>() {
+                Ok(k) => k,
+                Err(_) =>{ return Err("Value parse error".into())}
+            };
+            m.insert(k, v);
         }
         Ok(m)
     }
 }
 
-impl Map {
+impl <K:PartialEq,V>Map<K,V> {
     fn new()->Self{
         Self{data:Vec::new()}
     }
-    fn insert(&mut self,key:String,value:i32)->(){
+    fn insert(&mut self,key:K,value:V)->(){
         if self.data.iter().find(|(k,_)| k == &key).is_none(){
             self.data.push((key,value));
         }else{
@@ -108,15 +117,15 @@ impl Map {
         }
         return;
     }
-    fn remove(&mut self,key:String){
+    fn remove(&mut self,key:K){
         if let Some(index) = self.data.iter().position(|(k,_)| k == &key){
             self.data.remove(index);
         }
     }
-    fn get(&mut self,key:String)->Option<&i32>{
+    fn get(&mut self,key:K)->Option<&V>{
         if let Some(index) = self.data.iter().position(|(k,_)| k == &key){
             return match  self.data.get(index) {
-                Some((k,v)) => Some(v),
+                Some((_,v)) => Some(v),
                 None =>  None
             }
         }
@@ -124,9 +133,10 @@ impl Map {
     }
 }
 
-fn main() {
 
-    let mut m:Map = Map::new();
+fn main(){
+
+    let mut m:Map<String,i32> = Map::new();
     m.insert("1".into(),11);
     m.insert("2".into(),22);
     m.insert("3".into(),33);
@@ -142,6 +152,7 @@ fn main() {
     println!("{:?}",&m);
     storage.rollback(ver1.clone(),&mut m);
     println!("{:?}",&m);
+
 }
 
 
@@ -151,14 +162,14 @@ mod tests {
 
     #[test]
     fn test_map_insert() {
-        let mut m:Map = Map::new();
+        let mut m:Map<String,i32> = Map::new();
         m.insert("1".into(),11);
         assert_eq!(m.get("1".into()), Some(&11));
     }
 
     #[test]
     fn test_map_remove() {
-        let mut m:Map = Map::new();
+        let mut m:Map<String,i32> = Map::new();
         m.insert("1".into(),11);
         m.remove("1".into());
         assert_eq!(m.get("1".into()), None);
@@ -166,7 +177,7 @@ mod tests {
 
     #[test]
     fn test_storage_checkpoint() {
-        let mut m:Map = Map::new();
+        let mut m:Map<String,i32> = Map::new();
         m.insert("1".into(),11);
         m.insert("2".into(),22);
         m.insert("3".into(),33);
@@ -191,7 +202,7 @@ mod tests {
     }
     #[test]
     fn test_storage_prune() {
-        let mut m: Map = Map::new();
+        let mut m: Map<String,i32> = Map::new();
         let mut storage = Storage::new();
 
         m.insert("1".into(), 11);
@@ -215,4 +226,5 @@ mod tests {
     }
 
 }
+
 
