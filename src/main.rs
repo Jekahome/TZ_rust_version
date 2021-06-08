@@ -16,7 +16,6 @@
 /// Но а так решение по желанию их вариантов несколько,
 /// желательно самое оптимальное по их мнениею, и описание почему так приветствуется
 
-use std::thread;
 use std::str::FromStr;
 use std::cmp::PartialEq;
 
@@ -42,7 +41,8 @@ impl Storage{
         Self{data:vec![]}
     }
     ///  Сохранить текущую версию.
-    fn checkpoint<K,V>(&mut self,version:Version,map:&Map<K,V>) where K: ToString,V: ToString {
+    fn checkpoint<K,V>(&mut self,version:Version,map:&Map<K,V>)
+        where K: PartialEq + FromStr + ToString + Sync + Send,V: FromStr + ToString + Sync + Send {
         let mut buf:String = "".to_string();
         for (k,v) in map.data.iter(){
             buf.push_str(&k.to_string());
@@ -54,7 +54,8 @@ impl Storage{
         self.data.push((version,buf));
     }
     /// Откатить на определенную версию.
-    fn rollback<K:PartialEq + FromStr,V: FromStr>(&self,version:Version,map:&mut Map<K,V>)->bool {
+    fn rollback<K,V>(&self,version:Version,map:&mut Map<K,V>)->bool
+        where K: PartialEq + FromStr + ToString + Sync + Send,V: FromStr + ToString + Sync + Send {
         if let Some(index) = self.data.iter().position(|(k,_)| k == &version){
             let (_,v) = self.data.get(index).unwrap();
             if let Ok(m) = Map::from_str(v){
@@ -74,11 +75,13 @@ impl Storage{
 
 
 #[derive(Debug)]
-struct Map<K,V>{
+struct Map<K,V>
+    where K: PartialEq + FromStr + ToString + Sync + Send,V: FromStr + ToString + Sync + Send {
     data:Vec<(K,V)>
 }
 
-impl <K: PartialEq + FromStr,V: FromStr> FromStr for Map<K,V> {
+impl <K,V> FromStr for Map<K,V>
+    where K: PartialEq + FromStr + ToString + Sync + Send,V: FromStr + ToString  + Sync + Send {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -100,7 +103,8 @@ impl <K: PartialEq + FromStr,V: FromStr> FromStr for Map<K,V> {
     }
 }
 
-impl <K:PartialEq,V>Map<K,V> {
+impl <K,V>Map<K,V>
+    where K: PartialEq + FromStr + ToString + Sync + Send,V: FromStr + ToString + Sync + Send {
     fn new()->Self{
         Self{data:Vec::new()}
     }
@@ -133,25 +137,28 @@ impl <K:PartialEq,V>Map<K,V> {
     }
 }
 
-use std::sync::Arc;
-use std::sync::RwLock;
 
 fn main(){
+    {
+        use std::thread;
+        use std::sync::Arc;
+        use std::sync::RwLock;
 
-    let mut m:Arc<RwLock<Map<String,i32>>> = Arc::new(RwLock::new(Map::new()));
-    let mut buf_th = vec![];
-    for i in 0..10_i32 {
-        let map_th = Arc::clone(&m);
-        buf_th.push(thread::spawn(move || {
-            if let Ok(mut map) = map_th.write(){
-                map.insert(i.to_string(),i);
-            }
-        }));
+        let m:Arc<RwLock<Map<String,i32>>> = Arc::new(RwLock::new(Map::new()));
+        let mut buf_th = vec![];
+        for i in 0..10_i32 {
+            let map_th = Arc::clone(&m);
+            buf_th.push(thread::spawn(move || {
+                if let Ok(mut map) = map_th.write(){
+                    map.insert(i.to_string(),i);
+                }
+            }));
+        }
+        for el in buf_th{
+            el.join().unwrap();
+        }
+        println!("{:?}",&m);
     }
-    for el in buf_th{
-        el.join().unwrap();
-    }
-    println!("{:?}",&m);
 
 
     let mut m:Map<String,i32> = Map::new();
